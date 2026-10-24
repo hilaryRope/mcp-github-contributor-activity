@@ -15,7 +15,8 @@ fn tool_schema() -> Value {
             "type": "object",
             "properties": {
                 "repo": {"type": "string", "description": "Repository as owner/name. Omit to search across all of GitHub."},
-                "user": {"type": "string", "description": "GitHub login"}
+                "user": {"type": "string", "description": "GitHub login"},
+                "days": {"type": "integer", "minimum": 1, "maximum": 365, "description": "Optional extra lookback window in days, reported as `last_<days>d` alongside daily/weekly/monthly. Large ranges are more likely to be truncated."}
             },
             "required": ["user"]
         }
@@ -27,7 +28,16 @@ fn call_tool(params: &Value) -> Value {
     let args = &params["arguments"];
     let result = if name == "contributor_activity" {
         match args["user"].as_str() {
-            Some(user) => github::activity(args["repo"].as_str().filter(|r| !r.is_empty()), user),
+            Some(user) => {
+                let days = match &args["days"] {
+                    Value::Null => None,
+                    v => match v.as_i64() {
+                        Some(d) => Some(d),
+                        None => return tool_error("`days` must be an integer".to_string()),
+                    },
+                };
+                github::activity(args["repo"].as_str().filter(|r| !r.is_empty()), user, days)
+            },
             None => Err("`user` is required".to_string()),
         }
     } else {
@@ -35,8 +45,12 @@ fn call_tool(params: &Value) -> Value {
     };
     match result {
         Ok(v) => json!({"content": [{"type": "text", "text": serde_json::to_string_pretty(&v).unwrap()}]}),
-        Err(e) => json!({"isError": true, "content": [{"type": "text", "text": e}]}),
+        Err(e) => tool_error(e),
     }
+}
+
+fn tool_error(text: String) -> Value {
+    json!({"isError": true, "content": [{"type": "text", "text": text}]})
 }
 
 fn handle(req: &Value) -> Option<Value> {
@@ -100,6 +114,10 @@ mod tests {
         let r = call_tool(&json!({"name": "contributor_activity", "arguments": {"repo": "a/b"}}));
         assert_eq!(r["isError"], true);
         let r = call_tool(&json!({"name": "contributor_activity", "arguments": {"repo": "bad", "user": "x"}}));
+        assert_eq!(r["isError"], true);
+        let r = call_tool(&json!({"name": "contributor_activity", "arguments": {"user": "x", "days": "ten"}}));
+        assert_eq!(r["isError"], true);
+        let r = call_tool(&json!({"name": "contributor_activity", "arguments": {"user": "x", "days": 0}}));
         assert_eq!(r["isError"], true);
         let r = call_tool(&json!({"name": "other", "arguments": {}}));
         assert_eq!(r["isError"], true);

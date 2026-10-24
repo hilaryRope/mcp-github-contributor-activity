@@ -22,7 +22,11 @@ Authentication: set `GITHUB_TOKEN`, or log in with `gh auth login` (the server f
 
 ## Tool
 
-`contributor_activity(user: "login", repo?: "owner/name")` — omit `repo` to search all of GitHub (more likely to hit the truncation limit).
+`contributor_activity(user: "login", repo?: "owner/name", days?: 1..365)` — omit `repo` to search all of GitHub (more likely to hit the truncation limit).
+
+`days` adds a `last_<days>d` window next to daily / weekly / monthly (and widens the search lookback). Wider ranges are more likely to be truncated.
+
+Transient GitHub failures (5xx, network errors) and rate limits that reset within 60 seconds are retried up to 3 times; longer rate limits fail with the reset time.
 
 ## Development
 
